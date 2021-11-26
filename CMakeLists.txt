@@ -43,6 +43,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
 add_library(wenet_stt_lib SHARED
     native/wenet_stt_lib.cpp
+    native/fst_export.cpp
+    native/md5/md5.cpp
 )
 target_include_directories(wenet_stt_lib PRIVATE
     native/wenet/runtime/server/x86

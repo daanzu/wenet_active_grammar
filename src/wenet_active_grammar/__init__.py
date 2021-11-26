@@ -14,4 +14,14 @@ MODEL_DOWNLOADS = {
     'gigaspeech_20210811_conformer_bidecoder': 'https://github.com/daanzu/wenet_active_grammar/releases/download/models/gigaspeech_20210811_conformer_bidecoder.zip'
 }
 
-from .wrapper import WenetSTT
+import logging
+_log = logging.getLogger('wenet')
+
+class WenetError(Exception):
+    pass
+
+from .compiler import Compiler, KaldiRule
+from .wrapper import KaldiAgfNNet3Decoder, KaldiLafNNet3Decoder, KaldiPlainNNet3Decoder
+from .wfst import WFST
+from .plain_dictation import PlainDictationRecognizer
+from .utils import disable_donation_message

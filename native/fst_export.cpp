@@ -190,7 +190,7 @@ bool fst__does_match(void* fst_vp, int32_t target_labels_len, int32_t target_lab
 }
 
 void* fst__load_file(char* filename_cp) {
-    auto fst = CastOrConvertToVectorFst(ReadFstKaldiGeneric(std::string(filename_cp)));
+    auto fst = fst::StdVectorFst::Read(std::string(filename_cp));
     return fst;
 }
 
@@ -215,16 +215,16 @@ bool fst__print(void* fst_vp, char* filename_cp) {
     return true;
 }
 
-void* fst__compile_text(char* fst_text_cp, char* isymbols_file_cp, char* osymbols_file_cp) {
-    ExecutionTimer timer("fst__compile_text:compiling");
-    std::istringstream fst_text(fst_text_cp);
-    auto isymbols = fst::SymbolTable::ReadText(isymbols_file_cp),
-        osymbols = fst::SymbolTable::ReadText(osymbols_file_cp);
-    auto fstclass = fst::script::CompileFstInternal(fst_text, "<fst__compile_text>", "vector", "standard",
-        isymbols, osymbols, nullptr, false, false, false, false, false);
-    delete isymbols;
-    delete osymbols;
-    auto fst = dynamic_cast<StdVectorFst*>(fst::Convert(*fstclass->GetFst<StdArc>(), "vector"));
-    if (!fst) KALDI_ERR << "could not convert Fst to StdVectorFst";
-    return fst;
-}
+// void* fst__compile_text(char* fst_text_cp, char* isymbols_file_cp, char* osymbols_file_cp) {
+//     ExecutionTimer timer("fst__compile_text:compiling");
+//     std::istringstream fst_text(fst_text_cp);
+//     auto isymbols = fst::SymbolTable::ReadText(isymbols_file_cp),
+//         osymbols = fst::SymbolTable::ReadText(osymbols_file_cp);
+//     auto fstclass = fst::script::CompileFstInternal(fst_text, "<fst__compile_text>", "vector", "standard",
+//         isymbols, osymbols, nullptr, false, false, false, false, false);
+//     delete isymbols;
+//     delete osymbols;
+//     auto fst = dynamic_cast<StdVectorFst*>(fst::Convert(*fstclass->GetFst<StdArc>(), "vector"));
+//     if (!fst) KALDI_ERR << "could not convert Fst to StdVectorFst";
+//     return fst;
+// }

@@ -20,8 +20,7 @@ _log = logging.getLogger('wenet')
 class WenetError(Exception):
     pass
 
-from .compiler import Compiler, KaldiRule
-from .wrapper import KaldiAgfNNet3Decoder, KaldiLafNNet3Decoder, KaldiPlainNNet3Decoder
-from .wfst import WFST
-from .plain_dictation import PlainDictationRecognizer
+from .compiler import Compiler, WenetRule
+# from .wrapper import WenetAgfNNet3Decoder, WenetLafNNet3Decoder, WenetPlainNNet3Decoder
+from .wfst import NativeWFST, SymbolTable
 from .utils import disable_donation_message

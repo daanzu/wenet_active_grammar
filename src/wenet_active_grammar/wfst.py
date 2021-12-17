@@ -44,7 +44,8 @@ class NativeWFST(FFIObject):
     one = 0.0
     eps = u'<eps>'
     eps_disambig = u'#0'
-    silent_words = frozenset((eps, eps_disambig, u'!SIL'))
+    eps_like_words = frozenset((eps, eps_disambig))
+    silent_words = frozenset((eps, eps_disambig))  # u'!SIL'
     native = property(lambda self: True)
 
     @classmethod
@@ -53,7 +54,7 @@ class NativeWFST(FFIObject):
         cls.word_to_ilabel_map = isymbol_table.word_to_id_map
         cls.word_to_olabel_map = osymbol_table.word_to_id_map
         cls.olabel_to_word_map = osymbol_table.id_to_word_map
-        cls.eps_like_ilabels = tuple(cls.word_to_ilabel_map[word] for word in (cls.eps, cls.eps_disambig))
+        cls.eps_like_ilabels = tuple(cls.word_to_ilabel_map[word] for word in cls.eps_like_words)
         cls.silent_olabels = tuple(
             frozenset(cls.word_to_olabel_map[word] for word in cls.silent_words)
             | frozenset(symbol for (word, symbol) in cls.word_to_olabel_map.items() if word.startswith('#nonterm')))
@@ -129,12 +130,11 @@ class NativeWFST(FFIObject):
     def add_arc(self, src_state, dst_state, label, olabel=None, weight=None):
         """ Default weight is 1. None label is replaced by eps. Default olabel of None is replaced by label. """
         self.filename = None
-        if label is None: label = self.eps
         if olabel is None: olabel = label
         if weight is None: weight = 1
         weight = -math.log(weight) if weight != 0 else self.zero
-        label_id = self.word_to_ilabel_map[label]
-        olabel_id = self.word_to_olabel_map[olabel]
+        label_id = self.word_to_ilabel_map[label] if label is not None else 0
+        olabel_id = self.word_to_olabel_map[olabel] if olabel is not None else 0
         result = self._lib.fst__add_arc(self.native_obj, int(src_state), int(dst_state), int(label_id), int(olabel_id), float(weight))
         if not result:
             raise WenetError("Failed fst__add_arc")
@@ -222,6 +222,7 @@ class SymbolTable(object):
         self.word_to_id_map = dict()
         self.id_to_word_map = dict()
         self.max_term_word_id = -1
+        self.expand_word_to_id_map_func = None
         if filename is not None:
             self.load_text_file(filename)
 
@@ -232,7 +233,11 @@ class SymbolTable(object):
         self.id_to_word_map.clear()
         self.word_to_id_map.update({ word: int(id) for (word, id) in word_id_pairs })
         self.id_to_word_map.update({ id: word for (word, id) in self.word_to_id_map.items() })
-        self.max_term_word_id = max(id for (word, id) in self.word_to_id_map.items() if not word.startswith('#nonterm'))
+        self.max_term_word_id = max(id for (word, id) in self.word_to_id_map.items() if not word.lower().startswith('#nonterm'))
+
+    def expand_word_to_id_map(self, func):
+        self.expand_word_to_id_map_func = func
+        self.word_to_id_map.update({ func(word): id for (word, id) in self.word_to_id_map.items() })
 
     def add_word(self, word, id=None):
         if id is None:
@@ -242,6 +247,8 @@ class SymbolTable(object):
             id = int(id)
         self.word_to_id_map[word] = id
         self.id_to_word_map[id] = word
+        if self.expand_word_to_id_map_func:
+            self.word_to_id_map[self.expand_word_to_id_map_func(word)] = id
 
     words = property(lambda self: self.word_to_id_map.keys())
 

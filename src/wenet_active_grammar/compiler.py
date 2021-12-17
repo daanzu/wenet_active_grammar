@@ -4,19 +4,15 @@
 # Licensed under the AGPL-3.0; see LICENSE file.
 #
 
-import collections, copy, logging, multiprocessing, os, re, shlex, shutil, subprocess, threading
+import collections, multiprocessing, os, re, threading
 import concurrent.futures
 from contextlib import contextmanager
-from io import open
-
-from six.moves import range, zip
 
 from . import _log, WenetError
-from .utils import ExternalProcess, debug_timer, platform, show_donation_message
-from .wfst import WFST, NativeWFST, SymbolTable
+from .utils import debug_timer, show_donation_message
+from .wfst import NativeWFST
 from .model import Model
-from .wrapper import WenetAgfCompiler, WenetAgfNNet3Decoder, WenetLafNNet3Decoder
-import wenet_active_grammar.defaults as defaults
+from .wrapper import WenetSTTModel, WenetAGDecoder
 
 _log = _log.getChild('compiler')
 
@@ -53,7 +49,7 @@ class WenetRule(object):
         self.destroyed = False  # WenetRule must not be used/referenced anymore
 
         # Public
-        self.fst = WFST() if not self.compiler.native_fst else NativeWFST()
+        self.fst = NativeWFST()
         self.matcher = None
         self.active = True
 
@@ -233,7 +229,7 @@ class WenetRule(object):
 
 class Compiler(object):
 
-    def __init__(self, model_dir=None, alternative_dictation=None):
+    def __init__(self, model_dir, alternative_dictation=None):
 
         show_donation_message()
         self._log = _log
@@ -245,10 +241,9 @@ class Compiler(object):
         self.model = Model(model_dir)
         self._lexicon_files_stale = False
 
-        NativeWFST.init_class(
-            osymbol_table=self.model.words_table,
-            isymbol_table=self.model.words_table if self.decoding_framework != 'laf' else SymbolTable(self.files_dict['words.relabeled.txt']),
-            wildcard_nonterms=self.wildcard_nonterms)
+        self.model.words_table.expand_word_to_id_map(lambda word: word.lower())
+        NativeWFST.init_class(osymbol_table=self.model.words_table, isymbol_table=self.model.words_table, wildcard_nonterms=tuple())
+        # FIXME: self.wildcard_nonterms
         self.decoder = None
 
         self._num_wenet_rules = 0
@@ -263,11 +258,16 @@ class Compiler(object):
         self.compile_queue = set()  # WenetRule
         self.load_queue = set()  # WenetRule; must maintain same order as order of instantiation!
 
-    def init_decoder(self, config=None, dictation_fst_file=None):
+    def init_decoder(self, config=None):
         if self.decoder: raise WenetError("Decoder already initialized")
-        if dictation_fst_file is None: dictation_fst_file = self.dictation_fst_filepath
-        decoder_kwargs = dict(model_dir=self.model_dir, tmp_dir=self.tmp_dir, dictation_fst_file=dictation_fst_file, max_num_rules=self._max_rule_id+1, config=config)
-        self.decoder = WenetAGDecoder(**decoder_kwargs)
+        # if dictation_fst_file is None: dictation_fst_file = self.dictation_fst_filepath
+        config = dict(
+            max_num_rules=self._max_rule_id+1,
+            grammar_symbol_path=self.model.files_dict['words.txt'],
+            rule0_label='#nonterm:rule0',
+            **({} if config is None else config),
+        )
+        self.decoder = WenetAGDecoder(WenetSTTModel(WenetSTTModel.build_config(self.model.model_dir, config)))
         return self.decoder
 
     num_wenet_rules = property(lambda self: self._num_wenet_rules)

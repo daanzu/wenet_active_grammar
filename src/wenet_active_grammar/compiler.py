@@ -56,56 +56,13 @@ class WenetRule(object):
     def __repr__(self):
         return "%s(%s, %s)" % (self.__class__.__name__, self.id, self.name)
 
-    fst_cache = property(lambda self: self.compiler.fst_cache)
     decoder = property(lambda self: self.compiler.decoder)
 
-    pending_compile = property(lambda self: (self in self.compiler.compile_queue) or (self in self.compiler.compile_duplicate_filename_queue))
     pending_load = property(lambda self: self in self.compiler.load_queue)
 
-    fst_wrapper = property(lambda self: self.fst if self.fst.native else self.filepath)
-    filename = property(lambda self: self.fst.filename)
-
-    @property
-    def filepath(self):
-        assert self.filename
-        assert self.compiler.tmp_dir is not None
-        return os.path.join(self.compiler.tmp_dir, self.filename)
-
-    def compile(self, lazy=False, duplicate=None):
+    def compile(self):
         if self.destroyed: raise WenetError("Cannot use a WenetRule after calling destroy()")
         if self.compiled: return self
-
-        if self.fst.native:
-            if not self.filename:
-                self.fst.compute_hash(self.fst_cache.dependencies_hash)
-                assert self.filename
-
-        else:
-            # Handle compiling text WFST to binary
-            if not self._fst_text:
-                # self.fst.normalize_weights()
-                self._fst_text = self.fst.get_fst_text(fst_cache=self.fst_cache)
-                assert self.filename
-            # if 'dictation' in self._fst_text: _log.log(50, '\n    '.join(["%s: FST text:" % self] + self._fst_text.splitlines()))  # log _fst_text
-
-        if self.compiler.cache_fsts and self.fst_cache.fst_is_current(self.filepath, touch=True):
-            _log.debug("%s: Skipped FST compilation thanks to FileCache" % self)
-            if self.compiler.decoding_framework == 'agf' and self.fst.native:
-                self.fst.compiled_native_obj = NativeWFST.load_file(self.filepath)
-            self.compiled = True
-            return self
-        else:
-            if duplicate:
-                _log.warning("%s was supposed to be a duplicate compile, but was not found in FileCache")
-
-        if lazy:
-            if not self.pending_compile:
-                # Special handling for rules that are an exact content match (and hence hash/name) with another (different) rule already in the compile_queue
-                if not any(self.filename == wenet_rule.filename for wenet_rule in self.compiler.compile_queue if self != wenet_rule):
-                    self.compiler.compile_queue.add(self)
-                else:
-                    self.compiler.compile_duplicate_filename_queue.add(self)
-            return self
 
         return self.finish_compile()
 
@@ -113,67 +70,30 @@ class WenetRule(object):
         # Must be thread-safe!
         with self.cls_lock:
             self.compiler.prepare_for_compilation()
-        _log.log(15, "%s: Compiling %sstate/%sarc FST%s%s" % (self, self.fst.num_states, self.fst.num_arcs,
-                (" (%dbyte)" % len(self._fst_text)) if self._fst_text else "",
-                (" to " + self.filename) if self.filename else ""))
-        assert self.fst.native or self._fst_text
+        _log.log(15, "%s: Compiling %sstate/%sarc FST%s", self, self.fst.num_states, self.fst.num_arcs)
         if _log.isEnabledFor(3):
             if self.fst.native: self.fst.write_file('tmp_G.fst')
-            if _log.isEnabledFor(2):
-                if self._fst_text: _log.log(2, '\n    '.join(["%s: FST text:" % self] + self._fst_text.splitlines()))  # log _fst_text
-                elif self.fst.native: self.fst.print()
-
-        try:
-            if self.compiler.decoding_framework == 'agf':
-                if self.fst.native:
-                    self.fst.compiled_native_obj = self.compiler._compile_agf_graph(compile=True, nonterm=self.nonterm, input_fst=self.fst, return_output_fst=True,
-                        output_filename=(self.filepath if self.compiler.cache_fsts else None))
-                else:
-                    self.compiler._compile_agf_graph(compile=True, nonterm=self.nonterm, input_text=self._fst_text, output_filename=self.filepath)
-                    self._fst_text = None  # Free memory
-
-            elif self.compiler.decoding_framework == 'laf':
-                # self.compiler._compile_laf_graph(compile=True, nonterm=self.nonterm, input_text=self._fst_text, output_filename=self.filepath)
-                # Keep self._fst_text, for adding directly later
-                pass
-
-            else: raise WenetError("unknown compiler.decoding_framework")
-        except Exception as e:
-            raise WenetError("Exception while compiling", self)  # Return this WenetRule inside exception
 
         self.compiled = True
         return self
 
-    def load(self, lazy=False):
+    def load(self):
         if self.destroyed: raise WenetError("Cannot use a WenetRule after calling destroy()")
-        if lazy or self.pending_compile:
-            self.compiler.load_queue.add(self)
-            return self
         assert self.compiled
 
         if self.has_been_loaded:
             # FIXME: why is this necessary?
             self._do_reloading()
         else:
-            if self.compiler.decoding_framework == 'agf':
-                grammar_fst_index = self.decoder.add_grammar_fst(self.fst if self.fst.native else self.filepath)
-            elif self.compiler.decoding_framework == 'laf':
-                grammar_fst_index = self.decoder.add_grammar_fst(self.fst) if self.fst.native else self.decoder.add_grammar_fst_text(self._fst_text)
-            else: raise WenetError("unknown compiler decoding_framework")
-            assert self.id == grammar_fst_index, "add_grammar_fst allocated invalid grammar_fst_index %d != %d for %s" % (grammar_fst_index, self.id, self)
+            grammar_fst_index = self.decoder.add_grammar_fst(self.fst)
+            assert self.id == grammar_fst_index  #, "add_grammar_fst allocated invalid grammar_fst_index %d != %d for %s" % (grammar_fst_index, self.id, self)
 
         self.loaded = True
         self.has_been_loaded = True
         return self
 
     def _do_reloading(self):
-        if self.compiler.decoding_framework == 'agf':
-            return self.decoder.reload_grammar_fst(self.id, (self.fst if self.fst.native else self.filepath))
-        elif self.compiler.decoding_framework == 'laf':
-            assert self.fst.native
-            return self.decoder.reload_grammar_fst(self.id, self.fst)
-            if not self.fst.native: return self.decoder.reload_grammar_fst_text(self.id, self._fst_text)  # FIXME: not implemented
-        else: raise WenetError("unknown compiler decoding_framework")
+        return self.decoder.reload_grammar_fst(self.id, self.fst)
 
     @contextmanager
     def reload(self):
@@ -205,12 +125,8 @@ class WenetRule(object):
 
         if self.loaded:
             self.decoder.remove_grammar_fst(self.id)
-            assert self not in self.compiler.compile_queue
-            assert self not in self.compiler.compile_duplicate_filename_queue
             assert self not in self.compiler.load_queue
         else:
-            if self in self.compiler.compile_queue: self.compiler.compile_queue.remove(self)
-            if self in self.compiler.compile_duplicate_filename_queue: self.compiler.compile_duplicate_filename_queue.remove(self)
             if self in self.compiler.load_queue: self.compiler.load_queue.remove(self)
 
         # Adjust other wenet_rules ids down, if above self.id, then rebuild dict
@@ -229,7 +145,7 @@ class WenetRule(object):
 
 class Compiler(object):
 
-    def __init__(self, model_dir, alternative_dictation=None):
+    def __init__(self, model_dir, alternative_dictation=None, oov_word='<unk>', silence_words=frozenset(), noise_words=frozenset(['<unk>'])):
 
         show_donation_message()
         self._log = _log
@@ -248,19 +164,18 @@ class Compiler(object):
 
         self._num_wenet_rules = 0
         self._max_rule_id = 999
-        self.nonterminals = tuple(['#nonterm:dictation'] + ['#nonterm:rule%i' % i for i in range(self._max_rule_id + 1)])
+        self.nonterminals = tuple(['#nonterm:rule%i' % i for i in range(self._max_rule_id + 1)] + list(self.wildcard_nonterms))
         words_set = frozenset(self.model.words_table.words)
-        self._oov_word = '<unk>' if ('<unk>' in self.model.words_table) else None  # FIXME: make this configurable, for different models
-        self._silence_words = frozenset(['!SIL']) & words_set  # FIXME: make this configurable, for different models
-        self._noise_words = frozenset(['<unk>', '!SIL']) & words_set  # FIXME: make this configurable, for different models
+        self._oov_word = str(oov_word)
+        self._silence_words = words_set & silence_words
+        self._noise_words = words_set & noise_words
 
         self.wenet_rule_by_id_dict = collections.OrderedDict()  # maps WenetRule.id -> WenetRule
-        self.compile_queue = set()  # WenetRule
         self.load_queue = set()  # WenetRule; must maintain same order as order of instantiation!
 
     def init_decoder(self, config=None):
         if self.decoder: raise WenetError("Decoder already initialized")
-        # if dictation_fst_file is None: dictation_fst_file = self.dictation_fst_filepath
+        # if dictation_fst_file is None: dictation_fst_file = self.dictation_fst_filepath  # FIXME
         config = dict(
             max_num_rules=self._max_rule_id+1,
             grammar_symbol_path=self.model.files_dict['words.txt'],
@@ -289,12 +204,14 @@ class Compiler(object):
     # Methods for compiling graphs.
 
     def add_word(self, word, phones=None, lazy_compilation=False, allow_online_pronunciations=False):
+        raise NotImplementedError()
         pronunciations = self.model.add_word(word, phones=phones, lazy_compilation=lazy_compilation, allow_online_pronunciations=allow_online_pronunciations)
         self._lexicon_files_stale = True  # Only mark lexicon stale if it was successfully modified (not an exception)
         return pronunciations
 
     def prepare_for_compilation(self):
         if self._lexicon_files_stale:
+            raise NotImplementedError()
             self.model.generate_lexicon_files()
             self.model.load_words()  # FIXME: This re-loading from the words.txt file may be unnecessary now that we have/use NativeWFST + SymbolTable, but it's not clear if it's safe to remove it.
             self.decoder.load_lexicon()
@@ -304,67 +221,44 @@ class Compiler(object):
                 self._agf_compiler = self._init_agf_compiler()
             self._lexicon_files_stale = False
 
-    def compile_top_fst(self):
-        return self._build_top_fst(nonterms=['#nonterm:rule'+str(i) for i in range(self._max_rule_id + 1)], noise_words=self._noise_words).compile()
+    # def compile_top_fst(self):
+    #     return self._build_top_fst(nonterms=['#nonterm:rule'+str(i) for i in range(self._max_rule_id + 1)], noise_words=self._noise_words).compile()
 
-    def compile_top_fst_dictation_only(self):
-        return self._build_top_fst(nonterms=['#nonterm:dictation'], noise_words=self._noise_words).compile()
+    # def compile_top_fst_dictation_only(self):
+    #     return self._build_top_fst(nonterms=['#nonterm:dictation'], noise_words=self._noise_words).compile()
 
-    def _build_top_fst(self, nonterms, noise_words):
-        wenet_rule = WenetRule(self, 'top', nonterm=False)
-        fst = wenet_rule.fst
-        state_initial = fst.add_state(initial=True)
-        state_final = fst.add_state(final=True)
+    # def _build_top_fst(self, nonterms, noise_words):
+    #     wenet_rule = WenetRule(self, 'top', nonterm=False)
+    #     fst = wenet_rule.fst
+    #     state_initial = fst.add_state(initial=True)
+    #     state_final = fst.add_state(final=True)
 
-        state_return = fst.add_state()
-        for nonterm in nonterms:
-            fst.add_arc(state_initial, state_return, nonterm)
-        fst.add_arc(state_return, state_final, None, '#nonterm:end')
+    #     state_return = fst.add_state()
+    #     for nonterm in nonterms:
+    #         fst.add_arc(state_initial, state_return, nonterm)
+    #     fst.add_arc(state_return, state_final, None, '#nonterm:end')
 
-        if noise_words:
-            for (state_from, state_to) in [
-                    (state_initial, state_final),
-                    # (state_initial, state_initial),  # FIXME: test this
-                    # (state_final, state_final),
-                    ]:
-                for word in noise_words:
-                    fst.add_arc(state_from, state_to, word)
+    #     if noise_words:
+    #         for (state_from, state_to) in [
+    #                 (state_initial, state_final),
+    #                 # (state_initial, state_initial),  # FIXME: test this
+    #                 # (state_final, state_final),
+    #                 ]:
+    #             for word in noise_words:
+    #                 fst.add_arc(state_from, state_to, word)
 
-        return wenet_rule
+    #     return wenet_rule
 
-    def process_compile_and_load_queues(self):
+    def process_load_queue(self):
         # Clean out obsolete entries
-        self.compile_queue.difference_update([wenet_rule for wenet_rule in self.compile_queue if wenet_rule.compiled])
-        self.compile_duplicate_filename_queue.difference_update([wenet_rule for wenet_rule in self.compile_duplicate_filename_queue if wenet_rule.compiled])
         self.load_queue.difference_update([wenet_rule for wenet_rule in self.load_queue if wenet_rule.loaded])
 
-        if self.compile_queue or self.compile_duplicate_filename_queue or self.load_queue:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()) as executor:
-                results = executor.map(lambda wenet_rule: wenet_rule.finish_compile(), self.compile_queue)
-                # Load pending rules that have already been compiled
-                # for wenet_rule in (self.load_queue - self.compile_queue - self.compile_duplicate_filename_queue):
-                #     wenet_rule.load()
-                #     self.load_queue.remove(wenet_rule)
-                # Handle rules as they are completed (have been compiled)
-                for wenet_rule in results:
-                    assert wenet_rule.compiled
-                    self.compile_queue.remove(wenet_rule)
-                    # if wenet_rule in self.load_queue:
-                    #     wenet_rule.load()
-                    #     self.load_queue.remove(wenet_rule)
-                # Handle rules that were pending compile but were duplicate and so compiled by/for another rule. They should be in the cache now
-                for wenet_rule in list(self.compile_duplicate_filename_queue):
-                    wenet_rule.compile(duplicate=True)
-                    assert wenet_rule.compiled
-                    self.compile_duplicate_filename_queue.remove(wenet_rule)
-                    # if wenet_rule in self.load_queue:
-                    #     wenet_rule.load()
-                    #     self.load_queue.remove(wenet_rule)
-                # Load rules in correct order
-                for wenet_rule in sorted(self.load_queue, key=lambda kr: kr.id):
-                    wenet_rule.load()
-                    assert wenet_rule.loaded
-                    self.load_queue.remove(wenet_rule)
+        if self.load_queue:
+            # Load rules in correct order
+            for wenet_rule in sorted(self.load_queue, key=lambda kr: kr.id):
+                wenet_rule.load()
+                assert wenet_rule.loaded
+                self.load_queue.remove(wenet_rule)
 
 
     ####################################################################################################################
@@ -372,8 +266,8 @@ class Compiler(object):
 
     def prepare_for_recognition(self):
         try:
-            if self.compile_queue or self.compile_duplicate_filename_queue or self.load_queue:
-                self.process_compile_and_load_queues()
+            if self.load_queue:
+                self.process_load_queue()
         except WenetError:
             raise
         except Exception:
@@ -492,6 +386,7 @@ class Compiler(object):
                 words_are_dictation_mask.append(in_dictation)
 
         return wenet_rule, words, words_are_dictation_mask, in_dictation
+
 
 ########################################################################################################################
 # Utility functions.

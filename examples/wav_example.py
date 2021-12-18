@@ -2,7 +2,7 @@ import logging, time
 import wenet_active_grammar
 
 logging.basicConfig(level=20)
-model_dir = 'tests/model'
+model_dir = '../tests/model'
 
 ##### Set up grammar compiler & decoder
 
@@ -35,4 +35,12 @@ rule.load()
 
 ##### Perform decoding on wav file
 
+import wave
 
+with wave.open('test_it-depends-on-the-context.wav', 'rb') as f:
+    wav_data = f.readframes(f.getnframes())
+
+decoder.decode(wav_data, finalize=True)
+result, final = decoder.get_result(final=True)
+assert final
+print(repr(result))

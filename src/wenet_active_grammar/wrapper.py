@@ -12,7 +12,6 @@ from . import _log, WenetError
 from .ffi import FFIObject, _ffi, decode, encode, decode as de, encode as en
 from .utils import clock, find_file, show_donation_message, symbol_table_lookup
 from .wfst import NativeWFST
-import wenet_active_grammar.defaults as defaults
 
 _log = _log.getChild('wrapper')
 _log_library = _log.getChild('library')

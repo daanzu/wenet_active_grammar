@@ -12,7 +12,6 @@ from six import PY2, text_type
 from . import _log, WenetError
 from .wfst import SymbolTable
 from .utils import ExternalProcess, find_file, load_symbol_table, show_donation_message, symbol_table_lookup
-import wenet_active_grammar.defaults as defaults
 import wenet_active_grammar.utils as utils
 
 _log = _log.getChild('model')

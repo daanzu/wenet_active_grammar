@@ -37,6 +37,7 @@ WENET_STT_API bool wenet_ag__destruct_decoder(void *decoder_vp);
 WENET_STT_API bool wenet_ag__decode(void *decoder_vp, float *wav_samples, int32_t wav_samples_len, bool finalize);
 WENET_STT_API bool wenet_ag__get_result(void *decoder_vp, char *text, int32_t text_max_len, bool *final_p);
 WENET_STT_API bool wenet_ag__reset(void *decoder_vp);
+WENET_STT_API bool wenet_ag__set_grammars_activity(void *decoder_vp, bool *grammars_activity_cp, int32_t grammars_activity_cp_size);
 WENET_STT_API int32_t wenet_ag__add_grammar_fst(void *decoder_vp, void *grammar_fst_vp);
 WENET_STT_API bool wenet_ag__reload_grammar_fst(void *decoder_vp, int32_t grammar_fst_index, void *grammar_fst_vp);
 WENET_STT_API bool wenet_ag__remove_grammar_fst(void *decoder_vp, int32_t grammar_fst_index);

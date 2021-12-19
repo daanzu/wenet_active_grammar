@@ -70,7 +70,7 @@ class WenetRule(object):
         # Must be thread-safe!
         with self.cls_lock:
             self.compiler.prepare_for_compilation()
-        _log.log(15, "%s: Compiling %sstate/%sarc FST%s", self, self.fst.num_states, self.fst.num_arcs)
+        _log.log(15, "%s: Compiling %sstate/%sarc FST", self, self.fst.num_states, self.fst.num_arcs)
         if _log.isEnabledFor(3):
             if self.fst.native: self.fst.write_file('tmp_G.fst')
 
@@ -180,6 +180,7 @@ class Compiler(object):
             max_num_rules=self._max_rule_id+1,
             grammar_symbol_path=self.model.files_dict['words.txt'],
             rule0_label='#nonterm:rule0',
+            nonterm_end_label='#nonterm:end',
             **({} if config is None else config),
         )
         self.decoder = WenetAGDecoder(WenetSTTModel(WenetSTTModel.build_config(self.model.model_dir, config)))

@@ -212,6 +212,7 @@ struct WenetSTTModel {
         if (!one_time_initialized_) {
             one_time_initialized_ = true;
             google::InitGoogleLogging("WenetSTT");
+            LOG(INFO) << "Initializing WenetSTT in process " << getpid();
         }
 
         if (!config_json_str.empty()) {
@@ -280,6 +281,9 @@ public:
 
     ~WenetSTTDecoder() {
         if (decode_thread_->joinable()) {
+            if (!finalized_) {
+                Finalize();
+            }
             decode_thread_->join();
         }
     }
@@ -292,8 +296,7 @@ public:
             feature_pipeline_->AcceptWaveform(wav_samples);
         }
         if (finalize) {
-            feature_pipeline_->set_input_finished();
-            finalized_ = true;
+            Finalize();
         }
     }
 
@@ -306,6 +309,13 @@ public:
 
     // Reset decoder for decoding a new utterance.
     void Reset() {
+        if (decode_thread_->joinable()) {
+            if (!finalized_) {
+                Finalize();
+            }
+            decode_thread_->join();
+        }
+
         started_ = false;
         finalized_ = false;
         result_.clear();
@@ -318,20 +328,28 @@ public:
 
 protected:
 
+    void Finalize() {
+        feature_pipeline_->set_input_finished();
+        finalized_ = true;
+    }
+
     // Decode in separate thread.
     void DecodeThreadFunc() {
         while (true) {
             wenet::DecodeState state = decoder_->Decode();
-            CHECK(started_);
-            if (state == wenet::DecodeState::kEndFeats) {
+            if (!started_) {
+                CHECK_EQ(state, wenet::DecodeState::kEndFeats);
+                VLOG(2) << "Decoder not started yet, but was finalized, so terminating thread.";
+                break;
+            } else if (state == wenet::DecodeState::kEndFeats) {
                 CHECK(finalized_);
                 decoder_->Rescoring();
                 if (decoder_->DecodedSomething()) {
                     VLOG(1) << "Final result: " << decoder_->result()[0].sentence;
                     std::lock_guard<std::mutex> lock(result_mutex_);
                     result_ = decoder_->result()[0].sentence;
-                    result_is_final_ = true;
                 }
+                result_is_final_ = true;
                 break;
             } else if (state == wenet::DecodeState::kEndpoint) {
                 CHECK(false) << "Endpoint reached";
@@ -366,6 +384,8 @@ public:
         word_syms_ = model->decode_resource_->grammar_symbol_table;
         rules_words_offset_ = word_syms_->Find(model->config_json_.at("rule0_label").get<std::string>());
         CHECK_NE(rules_words_offset_, fst::SymbolTable::kNoSymbol) << "Could not find rule0 in symbol table";
+        nonterm_end_label_ = word_syms_->Find(model->config_json_.at("nonterm_end_label").get<std::string>());
+        CHECK_NE(nonterm_end_label_, fst::SymbolTable::kNoSymbol) << "Could not find nonterm_end in symbol table";
         max_num_rules_ = model->config_json_.at("max_num_rules").get<int64>();
         if (model->config_json_.contains("skip_words")) {
             for (const auto& word : model->config_json_.at("skip_words")) {
@@ -374,7 +394,8 @@ public:
         }
         // CHECK_GT(model->decode_config_->chunk_size, 0);
 
-        model->decode_resource_->fst.reset(new fst::StdVectorFst());
+        decode_fst_.reset(BuildGrammarFst());
+        model->decode_resource_->fst = decode_fst_;
         // Guarantee we are using CtcPrefixWfstBeamSearch.
         CHECK_NOTNULL(model->decode_resource_->fst);
         CHECK_NOTNULL(model->decode_resource_->grammar_symbol_table);
@@ -383,11 +404,19 @@ public:
 
     ~WenetAGDecoder() {}
 
-    void Decode(const std::vector<float>& wav_samples, bool finalize) { stt_decoder_->Decode(wav_samples, finalize); }
+    void Decode(const std::vector<float>& wav_samples, bool finalize) {
+        if (!decode_fst_) {
+            Reset();
+        }
+        CHECK_NOTNULL(decode_fst_);
+        stt_decoder_->Decode(wav_samples, finalize);
+    }
+
     bool GetResult(std::string& result) { return stt_decoder_->GetResult(result); }
 
     void Reset() {
         if (!decode_fst_) {
+            VLOG(1) << "Rebuilding decode_fst_";
             decode_fst_.reset(BuildGrammarFst());
             auto& searcher = stt_decoder_->decoder_->get_searcher();
             CHECK_EQ(searcher.Type(), wenet::SearchType::kPrefixWfstBeamSearch);
@@ -397,12 +426,14 @@ public:
         stt_decoder_->Reset();
     }
 
+    void SetGrammarsActivity(const std::vector<bool>& grammars_activity) { grammars_activity_ = grammars_activity; }
+
     // Does not take ownership of FST!?
     int32 AddGrammarFst(fst::StdExpandedFst* grammar_fst, std::string grammar_name = "<unnamed>") {
         InvalidateDecodeFst();
         // ExecutionTimer timer("AddGrammarFst:loading");
         auto grammar_fst_index = grammar_fsts_.size();
-        // VLOG(2) << "adding FST #" << grammar_fst_index << " @ 0x" << grammar_fst << " " << grammar_name;
+        VLOG(1) << "adding FST #" << grammar_fst_index << " @ 0x" << grammar_fst << " " << grammar_name;
         grammar_fsts_.push_back(grammar_fst);
         // grammar_fsts_name_map_[grammar_fst] = grammar_name;
         return grammar_fst_index;
@@ -412,7 +443,7 @@ public:
         InvalidateDecodeFst();
         auto old_grammar_fst = grammar_fsts_.at(grammar_fst_index);
         // grammar_fsts_name_map_.erase(old_grammar_fst);
-        // VLOG(2) << "reloading FST #" << grammar_fst_index << " @ 0x" << grammar_fst << " " << grammar_name;
+        VLOG(1) << "reloading FST #" << grammar_fst_index << " @ 0x" << grammar_fst << " " << grammar_name;
         grammar_fsts_.at(grammar_fst_index) = grammar_fst;
         // grammar_fsts_name_map_[grammar_fst] = grammar_name;
         return true;
@@ -421,7 +452,7 @@ public:
     bool RemoveGrammarFst(int32 grammar_fst_index) {
         InvalidateDecodeFst();
         auto grammar_fst = grammar_fsts_.at(grammar_fst_index);
-        // VLOG(2) << "removing FST #" << grammar_fst_index << " @ 0x" << grammar_fst << " " << grammar_fsts_name_map_.at(grammar_fst);
+        VLOG(1) << "removing FST #" << grammar_fst_index << " @ 0x" << grammar_fst;
         grammar_fsts_.erase(grammar_fsts_.begin() + grammar_fst_index);
         // grammar_fsts_name_map_.erase(grammar_fst);
         return true;
@@ -430,8 +461,9 @@ public:
 protected:
 
     bool InvalidateDecodeFst() {
-        CHECK(!stt_decoder_->started_) << "Cannot invalidate grammar FSTs in the middle of decoding";
+        CHECK(!stt_decoder_ || !stt_decoder_->started_) << "Cannot invalidate grammar FSTs in the middle of decoding";
         if (decode_fst_) {
+            VLOG(1) << "Invalidating decode_fst_";
             decode_fst_.reset();
             return true;
         }
@@ -443,7 +475,7 @@ protected:
         // ExecutionTimer timer("BuildDecodeFst", -1);
 
         std::vector<std::pair<int32, const fst::StdFst *> > label_fst_pairs;
-        auto top_fst_nonterm = rules_words_offset_ + max_num_rules_;
+        auto top_fst_nonterm = rules_words_offset_ + max_num_rules_;  // Give our on-demand-generated top-fst the label index just past the last rule (thus unused).
 
         // Build top_fst
         fst::StdVectorFst top_fst;
@@ -457,27 +489,31 @@ protected:
         for (auto skip_word_id : skip_word_ids_)
             top_fst.AddArc(0, fst::StdArc(skip_word_id, 0, 0.0, final_state));
 
-        if (grammar_fsts_.size() > max_num_rules_) KALDI_ERR << "more grammars than max number";
+        CHECK_LE(grammar_fsts_.size(), max_num_rules_);
+        CHECK_EQ(grammars_activity_.size(), grammar_fsts_.size());
         for (size_t i = 0; i < grammar_fsts_.size(); ++i) {
-            if (grammars_activity_[i]) {
+            if (grammars_activity_.at(i)) {
                 top_fst.AddArc(0, fst::StdArc(0, (rules_words_offset_ + i), 0.0, final_state));
                 label_fst_pairs.emplace_back((rules_words_offset_ + i), grammar_fsts_.at(i));
             }
         }
+
         // if (dictation_fst_ != nullptr)
         //     label_fst_pairs.emplace_back(word_syms_->Find("#nonterm:dictation"), dictation_fst_);
         // top_fst.AddArc(0, StdArc(0, word_syms_->Find("#nonterm:dictation"), 0.0, final_state));
+
         fst::ArcSort(&top_fst, fst::StdILabelCompare());
         label_fst_pairs.emplace_back(top_fst_nonterm, new fst::StdConstFst(top_fst));
         // timer.step("top_fst");
 
-        fst::ReplaceFstOptions<fst::StdArc> replace_options(top_fst_nonterm, fst::REPLACE_LABEL_OUTPUT, fst::REPLACE_LABEL_OUTPUT, word_syms_->Find("#nonterm:end"));
-        auto cache_size = 1ULL << 30;  // config_->decode_fst_cache_size
-        replace_options.gc_limit = cache_size;  // ReplaceFst needs the most cache space of the 3 delayed Fsts?
+        fst::ReplaceFstOptions<fst::StdArc> replace_options(top_fst_nonterm, fst::REPLACE_LABEL_OUTPUT, fst::REPLACE_LABEL_OUTPUT, nonterm_end_label_);
+        // auto cache_size = 1ULL << 30;  // config_->decode_fst_cache_size
+        // replace_options.gc_limit = cache_size;  // ReplaceFst needs the most cache space of the 3 delayed Fsts?
         return new fst::StdReplaceFst(label_fst_pairs, replace_options);
     }
 
-    int64 rules_words_offset_ = 0;
+    int64 rules_words_offset_ = fst::kNoLabel;
+    int64 nonterm_end_label_ = fst::kNoLabel;
     int64 max_num_rules_ = 0;
     std::vector<int64> skip_word_ids_;
 
@@ -603,6 +639,15 @@ bool wenet_ag__reset(void *decoder_vp) {
     BEGIN_INTERFACE_CATCH_HANDLER
     auto decoder = static_cast<WenetAGDecoder*>(decoder_vp);
     decoder->Reset();
+    return true;
+    END_INTERFACE_CATCH_HANDLER(false)
+}
+
+bool wenet_ag__set_grammars_activity(void *decoder_vp, bool *grammars_activity_cp, int32_t grammars_activity_cp_size) {
+    BEGIN_INTERFACE_CATCH_HANDLER
+    auto decoder = static_cast<WenetAGDecoder*>(decoder_vp);
+    std::vector<bool> grammars_activity(grammars_activity_cp, grammars_activity_cp + grammars_activity_cp_size);
+    decoder->SetGrammarsActivity(grammars_activity);
     return true;
     END_INTERFACE_CATCH_HANDLER(false)
 }

@@ -94,6 +94,7 @@ class WenetAGDecoder(FFIObject):
         WENET_STT_API bool wenet_ag__decode(void *decoder_vp, float *wav_samples, int32_t wav_samples_len, bool finalize);
         WENET_STT_API bool wenet_ag__get_result(void *decoder_vp, char *text, int32_t text_max_len, bool *final_p);
         WENET_STT_API bool wenet_ag__reset(void *decoder_vp);
+        WENET_STT_API bool wenet_ag__set_grammars_activity(void *decoder_vp, bool *grammars_activity_cp, int32_t grammars_activity_cp_size);
         WENET_STT_API int32_t wenet_ag__add_grammar_fst(void *decoder_vp, void *grammar_fst_vp);
         WENET_STT_API bool wenet_ag__reload_grammar_fst(void *decoder_vp, int32_t grammar_fst_index, void *grammar_fst_vp);
         WENET_STT_API bool wenet_ag__remove_grammar_fst(void *decoder_vp, int32_t grammar_fst_index);
@@ -102,6 +103,7 @@ class WenetAGDecoder(FFIObject):
     def __init__(self, model):
         if not isinstance(model, WenetSTTModel):
             raise TypeError("model must be a WenetSTTModel")
+        # _log.debug("WenetAGDecoder initialized in process %s", os.getpid())
 
         super().__init__()
         result = self._lib.wenet_ag__construct_decoder(model._model)
@@ -149,6 +151,14 @@ class WenetAGDecoder(FFIObject):
         result = self._lib.wenet_ag__reset(self._decoder)
         if not result:
             raise Exception("wenet_ag__reset failed")
+
+    def set_grammars_activity(self, grammars_activity):
+        # _log.log(5, "set_grammars_activity %s", ''.join('1' if a else '0' for a in grammars_activity))
+        if len(grammars_activity) != self.num_grammars:
+            _log.error("wrong len(grammars_activity) = %d != %d = num_grammars", len(grammars_activity), self.num_grammars)
+        result = self._lib.wenet_ag__set_grammars_activity(self._decoder, grammars_activity, len(grammars_activity))
+        if not result:
+            raise WenetError("wenet_ag__set_grammars_activity failed")
 
     def add_grammar_fst(self, grammar_fst):
         _log.log(8, "%s: adding grammar_fst: %r", self, grammar_fst)

@@ -1,4 +1,4 @@
-import logging, time
+import logging, os
 import wenet_active_grammar
 
 logging.basicConfig(level=20)
@@ -40,6 +40,7 @@ import wave
 with wave.open('test_it-depends-on-the-context.wav', 'rb') as f:
     wav_data = f.readframes(f.getnframes())
 
+decoder.set_grammars_activity([True])
 decoder.decode(wav_data, finalize=True)
 result, final = decoder.get_result(final=True)
 assert final

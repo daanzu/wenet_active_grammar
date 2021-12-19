@@ -12,7 +12,9 @@ build-and-reinstall-wheel:
 	python setup.py bdist_wheel
 	just reinstall-wheel
 
+# Release Debug RelWithDebInfo
 build-type type="Debug":
+	rm -rf dist/* || true
 	python setup.py bdist_wheel --build-type={{type}}
 
 build-manylinux:

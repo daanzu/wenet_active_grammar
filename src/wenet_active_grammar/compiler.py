@@ -155,7 +155,7 @@ class Compiler(object):
 
         self.model.words_table.expand_word_to_id_map(lambda word: word.lower())
         NativeWFST.init_class(osymbol_table=self.model.words_table, isymbol_table=self.model.words_table, wildcard_nonterms=tuple())
-        # FIXME: self.wildcard_nonterms
+        # FIXME: self.wildcard_nonterms?
         self.decoder = None
 
         self._num_wenet_rules = 0
@@ -168,6 +168,10 @@ class Compiler(object):
 
         self.wenet_rule_by_id_dict = collections.OrderedDict()  # maps WenetRule.id -> WenetRule
         self.load_queue = set()  # WenetRule; must maintain same order as order of instantiation!
+
+    num_wenet_rules = property(lambda self: self._num_wenet_rules)
+    lexicon_words = property(lambda self: self.model.words_table.word_to_id_map)
+    _longest_word = property(lambda self: self.model.longest_word)
 
     def init_decoder(self, config=None):
         if self.decoder: raise WenetError("Decoder already initialized")
@@ -182,9 +186,8 @@ class Compiler(object):
         self.decoder = WenetAGDecoder(WenetSTTModel(WenetSTTModel.build_config(self.model.model_dir, config)))
         return self.decoder
 
-    num_wenet_rules = property(lambda self: self._num_wenet_rules)
-    lexicon_words = property(lambda self: self.model.words_table.word_to_id_map)
-    _longest_word = property(lambda self: self.model.longest_word)
+    def init_rule(self, name, **kwargs):
+        return WenetRule(self, name, **kwargs)
 
     def alloc_rule_id(self):
         id = self._num_wenet_rules

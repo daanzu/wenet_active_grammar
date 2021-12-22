@@ -428,21 +428,24 @@ public:
 
     void SetGrammarsActivity(const std::vector<bool>& grammars_activity) { grammars_activity_ = grammars_activity; }
 
-    // Does not take ownership of FST!?
+    // Does not take ownership of FST!
     int32 AddGrammarFst(fst::StdExpandedFst* grammar_fst, std::string grammar_name = "<unnamed>") {
         InvalidateDecodeFst();
         // ExecutionTimer timer("AddGrammarFst:loading");
         auto grammar_fst_index = grammar_fsts_.size();
+        grammar_fst = PrepareGrammarFst(grammar_fst);
         VLOG(1) << "adding FST #" << grammar_fst_index << " @ 0x" << grammar_fst << " " << grammar_name;
         grammar_fsts_.push_back(grammar_fst);
         // grammar_fsts_name_map_[grammar_fst] = grammar_name;
         return grammar_fst_index;
     }
 
+    // Does not take ownership of FST!
     bool ReloadGrammarFst(int32 grammar_fst_index, fst::StdExpandedFst* grammar_fst, std::string grammar_name = "<unnamed>") {
         InvalidateDecodeFst();
         auto old_grammar_fst = grammar_fsts_.at(grammar_fst_index);
         // grammar_fsts_name_map_.erase(old_grammar_fst);
+        grammar_fst = PrepareGrammarFst(grammar_fst);
         VLOG(1) << "reloading FST #" << grammar_fst_index << " @ 0x" << grammar_fst << " " << grammar_name;
         grammar_fsts_.at(grammar_fst_index) = grammar_fst;
         // grammar_fsts_name_map_[grammar_fst] = grammar_name;
@@ -455,6 +458,7 @@ public:
         VLOG(1) << "removing FST #" << grammar_fst_index << " @ 0x" << grammar_fst;
         grammar_fsts_.erase(grammar_fsts_.begin() + grammar_fst_index);
         // grammar_fsts_name_map_.erase(grammar_fst);
+        delete grammar_fst;
         return true;
     }
 
@@ -468,6 +472,18 @@ protected:
             return true;
         }
         return false;
+    }
+
+    fst::StdExpandedFst* PrepareGrammarFst(fst::StdExpandedFst* grammar_fst) {
+        // ExecutionTimer timer("OptimizeGrammarFst");
+        fst::StdVectorFst vector_fst;
+        fst::Disambiguate(*grammar_fst, &vector_fst);
+        fst::RmEpsilon(&vector_fst);
+        fst::StdVectorFst vector_fst2;
+        fst::Determinize(vector_fst, &vector_fst2);
+        fst::ArcSort(&vector_fst2, fst::StdILabelCompare());
+        auto const_fst = new fst::StdConstFst(vector_fst2);
+        return const_fst;
     }
 
     fst::StdFst* BuildDecodeFst() {
@@ -517,8 +533,7 @@ protected:
         // Create replace FST, either on-demand or pre-compiled.
         fst::ReplaceFstOptions<fst::StdArc> replace_options(top_fst_nonterm, fst::REPLACE_LABEL_OUTPUT, fst::REPLACE_LABEL_OUTPUT, nonterm_end_label_);
         if (true) {
-            // auto cache_size = 1ULL << 30;  // config_->decode_fst_cache_size
-            // replace_options.gc_limit = cache_size;  // ReplaceFst needs the most cache space of the 3 delayed Fsts?
+            // replace_options.gc_limit = 1ULL << 30;
             return new fst::StdReplaceFst(label_fst_pairs, replace_options);
         } else {
             auto debug_replace_fst = new fst::StdVectorFst();

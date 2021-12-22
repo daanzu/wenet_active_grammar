@@ -12,7 +12,7 @@ decoder = compiler.init_decoder()
 ##### Set up a rule
 
 if True:
-    rule = wenet_active_grammar.WenetRule(compiler, 'TestRule')
+    rule = compiler.init_rule('TestRule')
     fst = rule.fst
 
     # Construct grammar in a FST
@@ -35,7 +35,7 @@ if True:
 ##### You could add many more rules...
 
 if True:
-    rule = wenet_active_grammar.WenetRule(compiler, 'TestRule')
+    rule = compiler.init_rule('TestRule2')
     fst = rule.fst
 
     previous_state = fst.add_state(initial=True)

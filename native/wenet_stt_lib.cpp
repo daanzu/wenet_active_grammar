@@ -394,7 +394,7 @@ public:
         }
         // CHECK_GT(model->decode_config_->chunk_size, 0);
 
-        decode_fst_.reset(BuildGrammarFst());
+        decode_fst_.reset(BuildDecodeFst());
         model->decode_resource_->fst = decode_fst_;
         // Guarantee we are using CtcPrefixWfstBeamSearch.
         CHECK_NOTNULL(model->decode_resource_->fst);
@@ -417,7 +417,7 @@ public:
     void Reset() {
         if (!decode_fst_) {
             VLOG(1) << "Rebuilding decode_fst_";
-            decode_fst_.reset(BuildGrammarFst());
+            decode_fst_.reset(BuildDecodeFst());
             auto& searcher = stt_decoder_->decoder_->get_searcher();
             CHECK_EQ(searcher.Type(), wenet::SearchType::kPrefixWfstBeamSearch);
             auto& cast_searcher = static_cast<wenet::CtcPrefixWfstBeamSearch&>(searcher);
@@ -470,7 +470,7 @@ protected:
         return false;
     }
 
-    fst::StdReplaceFst* BuildGrammarFst() {
+    fst::StdFst* BuildDecodeFst() {
         InvalidateDecodeFst();
         // ExecutionTimer timer("BuildDecodeFst", -1);
 
@@ -506,10 +506,27 @@ protected:
         label_fst_pairs.emplace_back(top_fst_nonterm, new fst::StdConstFst(top_fst));
         // timer.step("top_fst");
 
+        // Save to files for debugging.
+        if (false) {
+            top_fst.Write("top_fst.fst");
+            for (const auto& label_fst_pair : label_fst_pairs) {
+                label_fst_pair.second->Write("rule" + std::to_string(label_fst_pair.first) + ".fst");
+            }
+        }
+
+        // Create replace FST, either on-demand or pre-compiled.
         fst::ReplaceFstOptions<fst::StdArc> replace_options(top_fst_nonterm, fst::REPLACE_LABEL_OUTPUT, fst::REPLACE_LABEL_OUTPUT, nonterm_end_label_);
-        // auto cache_size = 1ULL << 30;  // config_->decode_fst_cache_size
-        // replace_options.gc_limit = cache_size;  // ReplaceFst needs the most cache space of the 3 delayed Fsts?
-        return new fst::StdReplaceFst(label_fst_pairs, replace_options);
+        if (true) {
+            // auto cache_size = 1ULL << 30;  // config_->decode_fst_cache_size
+            // replace_options.gc_limit = cache_size;  // ReplaceFst needs the most cache space of the 3 delayed Fsts?
+            return new fst::StdReplaceFst(label_fst_pairs, replace_options);
+        } else {
+            auto debug_replace_fst = new fst::StdVectorFst();
+            fst::Replace(label_fst_pairs, debug_replace_fst, replace_options);
+            // fst::RmEpsilon(debug_replace_fst);
+            // debug_replace_fst->Write("debug_replace_fst.fst");
+            return debug_replace_fst;
+        }
     }
 
     int64 rules_words_offset_ = fst::kNoLabel;
@@ -520,7 +537,7 @@ protected:
     std::shared_ptr<fst::SymbolTable> word_syms_ = nullptr;
     std::vector<fst::StdFst*> grammar_fsts_;
     std::vector<bool> grammars_activity_;  // Bitfield of whether each grammar is active for current/upcoming utterance.
-    std::shared_ptr<fst::StdReplaceFst> decode_fst_ = nullptr;
+    std::shared_ptr<fst::StdFst> decode_fst_ = nullptr;
     std::unique_ptr<WenetSTTDecoder> stt_decoder_ = nullptr;
 };
 

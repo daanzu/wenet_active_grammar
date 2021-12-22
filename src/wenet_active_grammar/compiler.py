@@ -23,22 +23,18 @@ class WenetRule(object):
 
     cls_lock = threading.Lock()
 
-    def __init__(self, compiler, name, nonterm=True, has_dictation=None, is_complex=None):
-        """
-        :param nonterm: bool whether rule represents a nonterminal in the active-grammar-fst (only False for the top FST?)
-        """
+    def __init__(self, compiler, name, has_dictation=None, is_complex=None):
         self.compiler = compiler
         self.name = name
-        self.nonterm = nonterm
         self.has_dictation = has_dictation
         self.is_complex = is_complex
 
         # id: matches "nonterm:rule__"; 0-based; can/will change due to rule unloading!
-        self.id = int(self.compiler.alloc_rule_id() if nonterm else -1)
+        self.id = self.compiler.alloc_rule_id()
+        assert self.id >= 0
         if self.id > self.compiler._max_rule_id: raise WenetError("WenetRule id > compiler._max_rule_id")
         if self.id in self.compiler.wenet_rule_by_id_dict: raise WenetError("WenetRule id already in use")
-        if self.id >= 0:
-            self.compiler.wenet_rule_by_id_dict[self.id] = self
+        self.compiler.wenet_rule_by_id_dict[self.id] = self
 
         # Private/protected
         self._fst_text = None

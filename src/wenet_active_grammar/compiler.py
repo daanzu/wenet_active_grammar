@@ -181,6 +181,7 @@ class Compiler(object):
             grammar_symbol_path=self.model.files_dict['words.txt'],
             rule0_label='#nonterm:rule0',
             nonterm_end_label='#nonterm:end',
+            dictation_lexiconfree_label='#nonterm:dictation_lexiconfree',
             rescoring_weight=0.0, ctc_weight=1.0,  # FIXME: make this configurable
             **({} if config is None else config),
         )

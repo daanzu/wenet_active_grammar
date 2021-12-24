@@ -380,20 +380,26 @@ protected:
 class WenetAGDecoder {
 public:
     WenetAGDecoder(std::shared_ptr<const WenetSTTModel> model) {
+        CHECK_NE(model->decode_config_->rescoring_weight, 1.0) << "Rescoring weight of 1.0 ignores grammar graph cost";
+        // CHECK_GT(model->decode_config_->chunk_size, 0);
         CHECK_NOTNULL(model->decode_resource_->grammar_symbol_table);
         word_syms_ = model->decode_resource_->grammar_symbol_table;
+
         rules_words_offset_ = word_syms_->Find(model->config_json_.at("rule0_label").get<std::string>());
         CHECK_NE(rules_words_offset_, fst::SymbolTable::kNoSymbol) << "Could not find rule0 in symbol table";
         nonterm_end_label_ = word_syms_->Find(model->config_json_.at("nonterm_end_label").get<std::string>());
         CHECK_NE(nonterm_end_label_, fst::SymbolTable::kNoSymbol) << "Could not find nonterm_end in symbol table";
+        model->decode_config_->ctc_prefix_wfst_search_opts.nonterm_end_label = model->config_json_.at("nonterm_end_label").get<std::string>();
+        model->decode_config_->ctc_prefix_wfst_search_opts.dictation_lexiconfree_label = model->config_json_.at("dictation_lexiconfree_label").get<std::string>();
         max_num_rules_ = model->config_json_.at("max_num_rules").get<int64>();
         if (model->config_json_.contains("skip_words")) {
             for (const auto& word : model->config_json_.at("skip_words")) {
                 skip_word_ids_.emplace_back(word_syms_->Find(word.get<std::string>()));
-            }
+                }
         }
-        CHECK_NE(model->decode_config_->rescoring_weight, 1.0) << "Rescoring weight of 1.0 ignores grammar graph cost";
-        // CHECK_GT(model->decode_config_->chunk_size, 0);
+        if (model->config_json_.contains("dictation_wordpiece_insertion_penalty")) {
+            model->decode_config_->ctc_prefix_wfst_search_opts.dictation_wordpiece_insertion_penalty = model->config_json_.at("dictation_wordpiece_insertion_penalty").get<float>();
+        }
 
         decode_fst_.reset(BuildDecodeFst());
         model->decode_resource_->fst = decode_fst_;

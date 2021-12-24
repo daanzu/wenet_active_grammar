@@ -343,7 +343,7 @@ protected:
                 break;
             } else if (state == wenet::DecodeState::kEndFeats) {
                 CHECK(finalized_);
-                decoder_->Rescoring();
+                decoder_->Rescoring();  // Need this to finalize graph processing, including final states.
                 if (decoder_->DecodedSomething()) {
                     VLOG(1) << "Final result: " << decoder_->result()[0].sentence;
                     std::lock_guard<std::mutex> lock(result_mutex_);
@@ -392,6 +392,7 @@ public:
                 skip_word_ids_.emplace_back(word_syms_->Find(word.get<std::string>()));
             }
         }
+        CHECK_NE(model->decode_config_->rescoring_weight, 1.0) << "Rescoring weight of 1.0 ignores grammar graph cost";
         // CHECK_GT(model->decode_config_->chunk_size, 0);
 
         decode_fst_.reset(BuildDecodeFst());

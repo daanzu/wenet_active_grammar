@@ -7,7 +7,6 @@
 #include <torch/script.h>
 
 #include "decoder/params.h"
-#include "utils/log.h"
 #include "utils/timer.h"
 #include "utils/utils.h"
 
@@ -272,12 +271,18 @@ class WenetAGDecoder;
 class WenetSTTDecoder {
     friend class WenetAGDecoder;
 
+    using DecodeCallback = std::function<void(const wenet::TorchAsrDecoder&, bool final)>;
+
 public:
     WenetSTTDecoder(std::shared_ptr<const WenetSTTModel> model) :
         model_(model),
         feature_pipeline_(std::make_shared<wenet::FeaturePipeline>(*model_->feature_config_)),
         decoder_(std::make_shared<wenet::TorchAsrDecoder>(feature_pipeline_, model_->decode_resource_, *model_->decode_config_)),
-        decode_thread_(std::make_unique<std::thread>(&WenetSTTDecoder::DecodeThreadFunc, this)) {}
+        decode_thread_(std::make_unique<std::thread>(&WenetSTTDecoder::DecodeThreadFunc, this)) {
+            decode_callback_ = [this](const wenet::TorchAsrDecoder& decoder, bool final) {
+                DefaultDecodeCallback(decoder, final);
+            };
+        }
 
     ~WenetSTTDecoder() {
         if (decode_thread_->joinable()) {
@@ -326,6 +331,10 @@ public:
         decode_thread_ = std::make_unique<std::thread>(&WenetSTTDecoder::DecodeThreadFunc, this);
     }
 
+    void SetDecodeCallback(DecodeCallback callback) {
+        decode_callback_ = callback;
+    }
+
 protected:
 
     void Finalize() {
@@ -347,7 +356,7 @@ protected:
                 if (decoder_->DecodedSomething()) {
                     VLOG(1) << "Final result: " << decoder_->result()[0].sentence;
                     std::lock_guard<std::mutex> lock(result_mutex_);
-                    result_ = decoder_->result()[0].sentence;
+                    decode_callback_(*decoder_, true);
                 }
                 result_is_final_ = true;
                 break;
@@ -358,16 +367,21 @@ protected:
                 if (decoder_->DecodedSomething()) {
                     VLOG(1) << "Partial result: " << decoder_->result()[0].sentence;
                     std::lock_guard<std::mutex> lock(result_mutex_);
-                    result_ = decoder_->result()[0].sentence;
+                    decode_callback_(*decoder_, false);
                 }
             }
         }
+    }
+
+    void DefaultDecodeCallback(const wenet::TorchAsrDecoder& decoder, bool final) {
+        result_ = decoder_->result()[0].sentence;
     }
 
     std::shared_ptr<const WenetSTTModel> model_;
     std::shared_ptr<wenet::FeaturePipeline> feature_pipeline_;
     std::shared_ptr<wenet::TorchAsrDecoder> decoder_;
     std::unique_ptr<std::thread> decode_thread_;
+    DecodeCallback decode_callback_;
 
     bool started_ = false;
     bool finalized_ = false;
@@ -387,6 +401,7 @@ public:
 
         rules_words_offset_ = word_syms_->Find(model->config_json_.at("rule0_label").get<std::string>());
         CHECK_NE(rules_words_offset_, fst::SymbolTable::kNoSymbol) << "Could not find rule0 in symbol table";
+        model->decode_config_->ctc_prefix_wfst_search_opts.rule0_label = model->config_json_.at("rule0_label").get<std::string>();
         nonterm_end_label_ = word_syms_->Find(model->config_json_.at("nonterm_end_label").get<std::string>());
         CHECK_NE(nonterm_end_label_, fst::SymbolTable::kNoSymbol) << "Could not find nonterm_end in symbol table";
         model->decode_config_->ctc_prefix_wfst_search_opts.nonterm_end_label = model->config_json_.at("nonterm_end_label").get<std::string>();
@@ -407,6 +422,10 @@ public:
         CHECK_NOTNULL(model->decode_resource_->fst);
         CHECK_NOTNULL(model->decode_resource_->grammar_symbol_table);
         stt_decoder_ = std::make_unique<WenetSTTDecoder>(model);
+        stt_decoder_->SetDecodeCallback([this](const wenet::TorchAsrDecoder& decoder, bool final) {
+            stt_decoder_->DefaultDecodeCallback(decoder, final);
+            result_rule_number_ = decoder.result()[0].rule_number;
+        });
     }
 
     ~WenetAGDecoder() {}
@@ -419,7 +438,14 @@ public:
         stt_decoder_->Decode(wav_samples, finalize);
     }
 
-    bool GetResult(std::string& result) { return stt_decoder_->GetResult(result); }
+    bool GetResult(std::string& result, int32_t *rule_number_p) {
+        std::lock_guard<std::mutex> lock(stt_decoder_->result_mutex_);
+        result = stt_decoder_->result_;
+        if (rule_number_p) {
+            *rule_number_p = result_rule_number_;
+        }
+        return stt_decoder_->result_is_final_;
+    }
 
     void Reset() {
         if (!decode_fst_) {
@@ -431,6 +457,7 @@ public:
             cast_searcher.ResetFst(decode_fst_);
         }
         stt_decoder_->Reset();
+        result_rule_number_ = -1;
     }
 
     void SetGrammarsActivity(const std::vector<bool>& grammars_activity) { grammars_activity_ = grammars_activity; }
@@ -561,6 +588,7 @@ protected:
     std::vector<bool> grammars_activity_;  // Bitfield of whether each grammar is active for current/upcoming utterance.
     std::shared_ptr<fst::StdFst> decode_fst_ = nullptr;
     std::unique_ptr<WenetSTTDecoder> stt_decoder_ = nullptr;
+    int32_t result_rule_number_ = -1;
 };
 
 
@@ -663,11 +691,11 @@ bool wenet_ag__decode(void *decoder_vp, float *wav_samples, int32_t wav_samples_
     END_INTERFACE_CATCH_HANDLER(false)
 }
 
-bool wenet_ag__get_result(void *decoder_vp, char *text, int32_t text_max_len, bool *final_p) {
+bool wenet_ag__get_result(void *decoder_vp, char *text, int32_t text_max_len, bool *final_p, int32_t *rule_number_p) {
     BEGIN_INTERFACE_CATCH_HANDLER
     auto decoder = static_cast<WenetAGDecoder*>(decoder_vp);
     std::string result;
-    *final_p = decoder->GetResult(result);
+    *final_p = decoder->GetResult(result, rule_number_p);
     strncpy(text, result.c_str(), text_max_len);
     text[text_max_len - 1] = 0;  // Just in case.
     return true;

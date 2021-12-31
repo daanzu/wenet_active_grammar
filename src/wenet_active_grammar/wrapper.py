@@ -92,7 +92,7 @@ class WenetAGDecoder(FFIObject):
         WENET_STT_API void *wenet_ag__construct_decoder(void *model_vp);
         WENET_STT_API bool wenet_ag__destruct_decoder(void *decoder_vp);
         WENET_STT_API bool wenet_ag__decode(void *decoder_vp, float *wav_samples, int32_t wav_samples_len, bool finalize);
-        WENET_STT_API bool wenet_ag__get_result(void *decoder_vp, char *text, int32_t text_max_len, bool *final_p);
+        WENET_STT_API bool wenet_ag__get_result(void *decoder_vp, char *text, int32_t text_max_len, bool *final_p, int32_t *rule_number_p);
         WENET_STT_API bool wenet_ag__reset(void *decoder_vp);
         WENET_STT_API bool wenet_ag__set_grammars_activity(void *decoder_vp, bool *grammars_activity_cp, int32_t grammars_activity_cp_size);
         WENET_STT_API int32_t wenet_ag__add_grammar_fst(void *decoder_vp, void *grammar_fst_vp);
@@ -132,12 +132,14 @@ class WenetAGDecoder(FFIObject):
     def get_result(self, final=None, text_max_len=1024):
         text_p = _ffi.new('char[]', text_max_len)
         result_final_p = _ffi.new('bool *')
+        rule_number_p = _ffi.new('int32_t *')
 
         while True:
-            result = self._lib.wenet_ag__get_result(self._decoder, text_p, text_max_len, result_final_p)
+            result = self._lib.wenet_ag__get_result(self._decoder, text_p, text_max_len, result_final_p, rule_number_p)
             if not result:
                 raise Exception("wenet_ag__get_result failed")
             result_final = bool(result_final_p[0])
+            rule_number = int(rule_number_p[0])
             if not final or result_final:
                 break
             time.sleep(0.01)
@@ -145,7 +147,7 @@ class WenetAGDecoder(FFIObject):
         text = decode(_ffi.string(text_p))
         if len(text) >= (text_max_len - 1):
             raise Exception("text may be too long")
-        return text.strip(), result_final
+        return text.strip(), result_final, rule_number
 
     def reset(self):
         result = self._lib.wenet_ag__reset(self._decoder)

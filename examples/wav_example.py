@@ -88,6 +88,7 @@ with wave.open('test_it-depends-on-the-context.wav', 'rb') as f:
 
 decoder.set_grammars_activity([True] * compiler.num_wenet_rules)
 decoder.decode(wav_data, finalize=True)
-result, final = decoder.get_result(final=True)
+result, final, rule_number = decoder.get_result(final=True)
 assert final
 print(repr(result))
+print("Rule number:", rule_number)

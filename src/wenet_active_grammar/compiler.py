@@ -37,8 +37,6 @@ class WenetRule(object):
         self.compiler.wenet_rule_by_id_dict[self.id] = self
 
         # Private/protected
-        self._fst_text = None
-        self.compiled = False
         self.loaded = False
         self.reloading = False  # WenetRule is in the process of the reload contextmanager
         self.has_been_loaded = False  # WenetRule was loaded, then reload() was called & completed, and now it is not currently loaded, and load() we need to call the decoder's reload
@@ -56,26 +54,13 @@ class WenetRule(object):
 
     pending_load = property(lambda self: self in self.compiler.load_queue)
 
-    def compile(self):
-        if self.destroyed: raise WenetError("Cannot use a WenetRule after calling destroy()")
-        if self.compiled: return self
-
-        return self.finish_compile()
-
-    def finish_compile(self):
-        # Must be thread-safe!
-        with self.cls_lock:
-            self.compiler.prepare_for_compilation()
-        _log.log(15, "%s: Compiling %sstate/%sarc FST", self, self.fst.num_states, self.fst.num_arcs)
-        if _log.isEnabledFor(3):
-            if self.fst.native: self.fst.write_file('tmp_G.fst')
-
-        self.compiled = True
-        return self
-
     def load(self):
         if self.destroyed: raise WenetError("Cannot use a WenetRule after calling destroy()")
-        assert self.compiled
+
+        self.compiler.prepare_for_compilation()
+        _log.log(15, "%s: Loading %sstate/%sarc FST", self, self.fst.num_states, self.fst.num_arcs)
+        # if _log.isEnabledFor(3):
+        #     self.fst.write_file('tmp_G.fst')
 
         if self.has_been_loaded:
             # FIXME: why is this necessary?
@@ -99,7 +84,6 @@ class WenetRule(object):
         was_loaded = self.loaded
         self.reloading = True
         self.fst.clear()
-        self._fst_text = None
         self.compiled = False
         self.loaded = False
 
@@ -206,14 +190,14 @@ class Compiler(object):
     # Methods for compiling graphs.
 
     def add_word(self, word, phones=None, lazy_compilation=False, allow_online_pronunciations=False):
-        raise NotImplementedError()
+        raise NotImplementedError()  # FIXME!!!
         pronunciations = self.model.add_word(word, phones=phones, lazy_compilation=lazy_compilation, allow_online_pronunciations=allow_online_pronunciations)
         self._lexicon_files_stale = True  # Only mark lexicon stale if it was successfully modified (not an exception)
         return pronunciations
 
     def prepare_for_compilation(self):
         if self._lexicon_files_stale:
-            raise NotImplementedError()
+            raise NotImplementedError()  # FIXME!!!
             self.model.generate_lexicon_files()
             self.model.load_words()  # FIXME: This re-loading from the words.txt file may be unnecessary now that we have/use NativeWFST + SymbolTable, but it's not clear if it's safe to remove it.
             self.decoder.load_lexicon()

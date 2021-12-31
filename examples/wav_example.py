@@ -29,7 +29,6 @@ if True:
     fst.add_arc(previous_state, final_state, 'spam', weight=8)  # 'spam' is much more likely
     fst.add_arc(final_state, previous_state, None)  # Loop back, with an epsilon (silent) arc
 
-    rule.compile()
     rule.load()
 
 ##### You could add many more rules...
@@ -45,7 +44,6 @@ if True:
         fst.add_arc(previous_state, state, word)
         previous_state = state
 
-    rule.compile()
     rule.load()
 
 if True:
@@ -63,7 +61,6 @@ if True:
     # fst.add_arc(previous_state, state, '#nonterm:dictation_lexiconfree')
     # fst.add_arc(previous_state, state, '#nonterm:end')
 
-    rule.compile()
     rule.load()
 
 if True:
@@ -77,7 +74,6 @@ if True:
         fst.add_arc(previous_state, state, word)
         previous_state = state
 
-    rule.compile()
     rule.load()
 
 ##### Perform decoding on wav file

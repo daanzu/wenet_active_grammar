@@ -111,6 +111,7 @@ setup(
     install_requires=[
         'cffi ~= 1.12',
         'numpy ~= 1.16, != 1.19.4',
+        'six',
     ],
     extras_require={
         # 'dev': ['check-manifest'],

@@ -424,7 +424,7 @@ public:
         stt_decoder_ = std::make_unique<WenetSTTDecoder>(model);
         stt_decoder_->SetDecodeCallback([this](const wenet::TorchAsrDecoder& decoder, bool final) {
             stt_decoder_->DefaultDecodeCallback(decoder, final);
-            result_rule_number_ = decoder.result()[0].rule_number;
+            result_rule_number_.emplace(decoder.result()[0].rule_number);
         });
     }
 
@@ -442,7 +442,7 @@ public:
         std::lock_guard<std::mutex> lock(stt_decoder_->result_mutex_);
         result = stt_decoder_->result_;
         if (rule_number_p) {
-            *rule_number_p = result_rule_number_;
+            *rule_number_p = *result_rule_number_;
         }
         return stt_decoder_->result_is_final_;
     }
@@ -457,7 +457,7 @@ public:
             cast_searcher.ResetFst(decode_fst_);
         }
         stt_decoder_->Reset();
-        result_rule_number_ = -1;
+        result_rule_number_.reset();
     }
 
     void SetGrammarsActivity(const std::vector<bool>& grammars_activity) { grammars_activity_ = grammars_activity; }
@@ -588,7 +588,7 @@ protected:
     std::vector<bool> grammars_activity_;  // Bitfield of whether each grammar is active for current/upcoming utterance.
     std::shared_ptr<fst::StdFst> decode_fst_ = nullptr;
     std::unique_ptr<WenetSTTDecoder> stt_decoder_ = nullptr;
-    int32_t result_rule_number_ = -1;
+    std::optional<int32_t> result_rule_number_;
 };
 
 

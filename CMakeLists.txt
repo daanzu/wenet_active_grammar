@@ -57,7 +57,7 @@ target_link_libraries(wenet_stt_lib
     frontend
     decoder
 )
-set_property(TARGET wenet_stt_lib PROPERTY CXX_STANDARD 14)
+set_property(TARGET wenet_stt_lib PROPERTY CXX_STANDARD 17)
 
 add_custom_command(
     TARGET wenet_stt_lib POST_BUILD

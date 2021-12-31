@@ -4,7 +4,7 @@
 # Licensed under the AGPL-3.0; see LICENSE file.
 #
 
-import json, os, re, sys, time
+import json, os, time
 
 import numpy as np
 

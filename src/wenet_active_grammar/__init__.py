@@ -21,6 +21,5 @@ class WenetError(Exception):
     pass
 
 from .compiler import Compiler, WenetRule
-# from .wrapper import WenetAgfNNet3Decoder, WenetLafNNet3Decoder, WenetPlainNNet3Decoder
 from .wfst import NativeWFST, SymbolTable
 from .utils import disable_donation_message

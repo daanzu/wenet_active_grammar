@@ -57,12 +57,8 @@ target_link_libraries(wenet_stt_lib
     frontend
     decoder
 )
-set_property(TARGET wenet_stt_lib PROPERTY CXX_STANDARD 17)
-set_property(TARGET wenet_stt_lib PROPERTY CXX_STANDARD_REQUIRED ON)
-if(MSVC)
-    add_compile_options("/std:c++17")
-    # set_property(TARGET wenet_stt_lib PROPERTY COMPILE_FLAGS "/std:c++17")
-endif(MSVC)
+set_property(TARGET wenet_stt_lib PROPERTY CXX_STANDARD 14)
+# set_property(TARGET wenet_stt_lib PROPERTY CXX_STANDARD_REQUIRED ON)
 
 add_custom_command(
     TARGET wenet_stt_lib POST_BUILD

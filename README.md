@@ -1,8 +1,10 @@
-# Wenet STT Python
+# WeNet Active Grammar
 
-> **Beta Software**
+> **Alpha Software**
 
-> Simple Python library, distributed via binary wheels with few direct dependencies, for easily using [WeNet](https://github.com/wenet-e2e/wenet) models for speech recognition.
+> **Python WeNet speech recognition with grammars that can be set active/inactive dynamically at decode-time**
+
+> Python package developed to enable context-based command & control of computer applications, as in the [Dragonfly](https://github.com/dictation-toolbox/dragonfly) speech recognition framework, using the [WeNet](https://github.com/wenet-e2e/wenet) automatic speech recognition engine.
 
 [![Donate](https://img.shields.io/badge/donate-GitHub-pink.svg)](https://github.com/sponsors/daanzu)
 [![Donate](https://img.shields.io/badge/donate-Patreon-orange.svg)](https://www.patreon.com/daanzu)
@@ -12,8 +14,8 @@ Requirements:
 * Python 3.7+ **x64**
 * Platform: **Windows/Linux/MacOS**
 * Python package requirements: `cffi`, `numpy`
-* Wenet Model (must be "runtime" format)
-    * Several are available ready-to-go on this project's [releases page](https://github.com/daanzu/wenet_active_grammar/releases/tag/models) and below.
+* WeNet Model (must be "runtime" format)
+    <!-- * Several are available ready-to-go on this project's [releases page](https://github.com/daanzu/wenet_active_grammar/releases/tag/models) and below. -->
 
 Models:
 
@@ -26,11 +28,11 @@ Models:
 
 ## Installation/Building
 
-Recommended installation via binary wheel from pip (requires a recent version of pip):
+<!-- Recommended installation via binary wheel from pip (requires a recent version of pip):
 
 ```bash
 python -m pip install wenet_active_grammar
-```
+``` -->
 
 For details on building from source, see the [Github Actions build workflow](.github/workflows/build.yml).
 

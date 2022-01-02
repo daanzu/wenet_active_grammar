@@ -54,12 +54,11 @@ if True:
     words = "it depends #nonterm:dictation_lexiconfree #nonterm:end".split()
     for i, word in enumerate(words):
         state = fst.add_state(final=(i == len(words) - 1))
-        # state = fst.add_state()
-        fst.add_arc(previous_state, state, word)
+        if word.startswith('#nonterm:'):
+            fst.add_arc(previous_state, state, None, word)
+        else:
+            fst.add_arc(previous_state, state, word)
         previous_state = state
-    # final_state = fst.add_state(final=True)
-    # fst.add_arc(previous_state, state, '#nonterm:dictation_lexiconfree')
-    # fst.add_arc(previous_state, state, '#nonterm:end')
 
     rule.load()
 
@@ -71,7 +70,10 @@ if True:
     words = "it #nonterm:dictation_lexiconfree #nonterm:end context".split()
     for i, word in enumerate(words):
         state = fst.add_state(final=(i == len(words) - 1))
-        fst.add_arc(previous_state, state, word)
+        if word.startswith('#nonterm:'):
+            fst.add_arc(previous_state, state, None, word)
+        else:
+            fst.add_arc(previous_state, state, word)
         previous_state = state
 
     rule.load()

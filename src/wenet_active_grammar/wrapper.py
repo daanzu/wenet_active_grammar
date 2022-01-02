@@ -222,6 +222,7 @@ class WenetAGDecoder(FFIObject):
             raise WenetError("wenet_ag__set_grammars_activity failed")
 
     def add_grammar_fst(self, grammar_fst):
+        assert isinstance(grammar_fst, NativeWFST)
         _log.log(8, "%s: adding grammar_fst: %r", self, grammar_fst)
         grammar_fst_index = self._lib.wenet_ag__add_grammar_fst(self._decoder, grammar_fst.native_obj)
         if grammar_fst_index < 0:
@@ -231,6 +232,7 @@ class WenetAGDecoder(FFIObject):
         return grammar_fst_index
 
     def reload_grammar_fst(self, grammar_fst_index, grammar_fst):
+        assert isinstance(grammar_fst, NativeWFST)
         _log.debug("%s: reloading grammar_fst_index: #%s %r", self, grammar_fst_index, grammar_fst)
         result = self._lib.wenet_ag__reload_grammar_fst(self._decoder, grammar_fst_index, grammar_fst.native_obj)
         if not result:

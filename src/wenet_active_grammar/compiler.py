@@ -133,6 +133,8 @@ class Compiler(object):
         self.parsing_framework = 'token'
         assert self.parsing_framework in ('token', 'text')
         self.alternative_dictation = alternative_dictation
+        if not (model_dir and os.path.isdir(model_dir)):
+            raise FileNotFoundError("Model directory does not exist: %s" % model_dir)
 
         self.model = Model(model_dir)
         self._lexicon_files_stale = False

@@ -33,8 +33,8 @@ class WenetRule(object):
         self.id = self.compiler.alloc_rule_id()
         assert self.id >= 0
         if self.id > self.compiler._max_rule_id: raise WenetError("WenetRule id > compiler._max_rule_id")
-        if self.id in self.compiler.wenet_rule_by_id_dict: raise WenetError("WenetRule id already in use")
-        self.compiler.wenet_rule_by_id_dict[self.id] = self
+        if self.id in self.compiler.rule_by_id_dict: raise WenetError("WenetRule id already in use")
+        self.compiler.rule_by_id_dict[self.id] = self
 
         # Private/protected
         self.loaded = False
@@ -110,12 +110,12 @@ class WenetRule(object):
             if self in self.compiler.load_queue: self.compiler.load_queue.remove(self)
 
         # Adjust other wenet_rules ids down, if above self.id, then rebuild dict
-        other_wenet_rules = list(self.compiler.wenet_rule_by_id_dict.values())
+        other_wenet_rules = list(self.compiler.rule_by_id_dict.values())
         other_wenet_rules.remove(self)
         for wenet_rule in other_wenet_rules:
             if wenet_rule.id > self.id:
                 wenet_rule.id -= 1
-        self.compiler.wenet_rule_by_id_dict = { wenet_rule.id: wenet_rule for wenet_rule in other_wenet_rules }
+        self.compiler.rule_by_id_dict = { wenet_rule.id: wenet_rule for wenet_rule in other_wenet_rules }
 
         self.compiler.free_rule_id()
         self.destroyed = True
@@ -150,7 +150,7 @@ class Compiler(object):
         self._silence_words = words_set & silence_words
         self._noise_words = words_set & noise_words
 
-        self.wenet_rule_by_id_dict = collections.OrderedDict()  # maps WenetRule.id -> WenetRule
+        self.rule_by_id_dict = collections.OrderedDict()  # maps WenetRule.id -> WenetRule
         self.load_queue = set()  # WenetRule; must maintain same order as order of instantiation!
 
     num_wenet_rules = property(lambda self: self._num_wenet_rules)
@@ -186,7 +186,7 @@ class Compiler(object):
         return id
 
     def get_rule_by_id(self, rule_number):
-        return self.wenet_rule_by_id_dict[rule_number]
+        return self.rule_by_id_dict[rule_number]
 
 
     ####################################################################################################################
@@ -261,11 +261,8 @@ class Compiler(object):
             raise
         except Exception:
             raise WenetError("Exception while compiling/loading rules in prepare_for_recognition")
-        finally:
-            if self.fst_cache.dirty:
-                self.fst_cache.save()
 
-    wildcard_nonterms = ('#nonterm:dictation', '#nonterm:dictation_cloud')
+    wildcard_nonterms = ('#nonterm:dictation', '#nonterm:dictation_lexiconfree', '#nonterm:dictation_alternative')
 
     def parse_output_for_rule(self, wenet_rule, output):
         """Can be used even when self.parsing_framework == 'token', only for mimic (which contains no nonterms)."""
@@ -273,13 +270,13 @@ class Compiler(object):
         self._log.log(5, "parse_output_for_rule(%s, %r) got %r", wenet_rule, output, labels)
         if labels is False:
             return None
-        words = [label for label in labels if not label.startswith('#nonterm:')]
+        words = remove_nonterms_in_words(labels)
         parsed_output = ' '.join(words)
         if parsed_output.lower() != output:
             self._log.error("parsed_output(%r).lower() != output(%r)" % (parsed_output, output))
         return words
 
-    alternative_dictation_regex = re.compile(r'(?<=#nonterm:dictation_cloud )(.*?)(?= #nonterm:end)')  # lookbehind & lookahead assertions
+    alternative_dictation_regex = re.compile(r'(?<=#nonterm:dictation_alternative )(.*?)(?= #nonterm:end)')  # lookbehind & lookahead assertions
 
     def parse_output(self, output, dictation_info_func=None):
         assert self.parsing_framework == 'token'
@@ -290,7 +287,7 @@ class Compiler(object):
         nonterm_token, _, parsed_output = output.partition(' ')
         assert nonterm_token.startswith('#nonterm:rule')
         wenet_rule_id = int(nonterm_token[len('#nonterm:rule'):])
-        wenet_rule = self.wenet_rule_by_id_dict[wenet_rule_id]
+        wenet_rule = self.rule_by_id_dict[wenet_rule_id]
 
         if self.alternative_dictation and dictation_info_func and wenet_rule.has_dictation and '#nonterm:dictation_cloud' in parsed_output:
             try:
@@ -358,7 +355,7 @@ class Compiler(object):
         nonterm_token, _, parsed_output = output.partition(' ')
         assert nonterm_token.startswith('#nonterm:rule')
         wenet_rule_id = int(nonterm_token[len('#nonterm:rule'):])
-        wenet_rule = self.wenet_rule_by_id_dict[wenet_rule_id]
+        wenet_rule = self.rule_by_id_dict[wenet_rule_id]
 
         words = []
         words_are_dictation_mask = []

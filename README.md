@@ -1,6 +1,6 @@
 # WeNet Active Grammar
 
-> **Alpha Software**
+> **Alpha Software -- early development**
 
 > **Python WeNet speech recognition with grammars that can be set active/inactive dynamically at decode-time**
 

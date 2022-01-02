@@ -207,6 +207,8 @@ class WenetAGDecoder(FFIObject):
         text = decode(_ffi.string(text_p))
         if len(text) >= (text_max_len - 1):
             raise WenetError("text may be too long")
+        if rule_number < 0:
+            rule_number = None
         return text.strip(), result_final, rule_number
 
     def reset(self):

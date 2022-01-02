@@ -21,8 +21,8 @@ Models:
 
 | Model | Download Size |
 |--------|--------|
-| [gigaspeech_20210728_u2pp_conformer](https://github.com/daanzu/wenet_active_grammar/releases/download/models/gigaspeech_20210728_u2pp_conformer.zip) | 549 MB |
-| [gigaspeech_20210811_conformer_bidecoder](https://github.com/daanzu/wenet_active_grammar/releases/download/models/gigaspeech_20210811_conformer_bidecoder.zip) | 540 MB |
+| [gigaspeech_20210728_u2pp_conformer](https://github.com/daanzu/wenet_stt_python/releases/download/models/gigaspeech_20210728_u2pp_conformer.zip) | 549 MB |
+| [gigaspeech_20210811_conformer_bidecoder](https://github.com/daanzu/wenet_stt_python/releases/download/models/gigaspeech_20210811_conformer_bidecoder.zip) | 540 MB |
 
 ## Usage
 

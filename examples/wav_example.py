@@ -88,3 +88,4 @@ result, final, rule_number = decoder.get_result(final=True)
 assert final
 print(repr(result))
 print("Rule number:", rule_number)
+print("Rule:", compiler.get_rule_by_id(rule_number))

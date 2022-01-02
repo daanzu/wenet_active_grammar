@@ -185,6 +185,9 @@ class Compiler(object):
         self._num_wenet_rules -= 1
         return id
 
+    def get_rule_by_id(self, rule_number):
+        return self.wenet_rule_by_id_dict[rule_number]
+
 
     ####################################################################################################################
     # Methods for compiling graphs.

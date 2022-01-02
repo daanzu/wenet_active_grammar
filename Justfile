@@ -24,7 +24,7 @@ clean:
 	rm -rf _skbuild/ native/wenet/runtime/server/x86/fc_base/ dist/*
 
 reinstall-wheel filename="dist/*":
-	python -m pip uninstall -y wenet-stt && python -m pip install {{filename}}
+	python -m pip uninstall -y wenet_active_grammar && python -m pip install {{filename}}
 
 test args="":
 	pytest {{args}} tests/

@@ -11,6 +11,7 @@ import numpy as np
 from . import _log, WenetError
 from .ffi import FFIObject, _ffi, decode, encode, decode as de, encode as en
 from .wfst import NativeWFST
+from .utils import download_model
 
 _log = _log.getChild('wrapper')
 _log_library = _log.getChild('library')
